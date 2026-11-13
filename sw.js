@@ -1,5 +1,5 @@
 // ツボマップ3D：オフライン用のキャッシュ（build.py が生成）
-const CACHE = 'tsubomap3d-7cc72e09baa9';
+const CACHE = 'tsubomap3d-6394729de29d';
 const ASSETS = ["./", "index.html", "app.js", "config.js", "backend-firebase.js", "kotsudo.js", "lib/three.module.min.js", "lib/OrbitControls.js", "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "models/skin.bin", "models/muscle.bin", "models/bone.bin", "models/skin_parts.bin"];
 const SDK = ["https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js", "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js", "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js"];
 self.addEventListener('install', e => {

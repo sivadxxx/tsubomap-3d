@@ -449,7 +449,7 @@ function rulerAdd(h) {
 }
 function clearRuler() { ruler.a = ruler.b = ruler.path = ruler.result = null; $('measure').hidden = true; showGuide(); dirty = true; }
 function setRuler(on) {
-  ruler.on = on && ready && session.state === 'in';
+  ruler.on = on && ready && canEdit();        // ものさしは、編集できる人だけが使える
   if (ruler.on && pen) setPen(false);
   if (ruler.on) { movingId = null; if (!cardEl.hidden) closeCard(); }
   if (!ruler.on && !ruler.b) clearRuler();        // 測りかけはやめる。測り終えた結果は、消すまで残す
@@ -718,7 +718,7 @@ function onSession(s) {
   if (unsubPoints) { unsubPoints(); unsubPoints = null; }
   if (s.state === 'in') {
     $('acctWho').textContent = s.email; $('acctWho').title = s.email; $('acctRole').textContent = ROLE_NAMES[role]; $('acct').hidden = false;
-    if (!canEdit()) { setPen(false); movingId = null; stage.classList.remove('penon'); if (!cardEl.hidden && $('cardView').hidden) closeCard(); showGuide(); }
+    if (!canEdit()) { setPen(false); setRuler(false); clearRuler(); movingId = null; stage.classList.remove('penon'); if (!cardEl.hidden && $('cardView').hidden) closeCard(); showGuide(); }
     if (role !== 'owner') closeMembers();
     unsubPoints = backend.onPoints(setPoints, e => toast('ツボを読み込めませんでした：' + explain(e)));
     auPw.value = '';
