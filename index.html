@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ツボマップ3D</title>
+<meta name="theme-color" content="#FAF6F1">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ツボマップ3D">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+:root{--bg:#FAF6F1;--card:#FFFFFF;--line:#E6DDD3;--ink:#3A2F29;--sub:#7A6C63;--accent:#C4633F;--accent-soft:#F6E4DB;--pin:#D43D2A}
+*{box-sizing:border-box}
+html,body{height:100%;overscroll-behavior:none}
+body{margin:0;touch-action:manipulation;-webkit-text-size-adjust:100%;background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,system-ui,sans-serif;font-size:15px;line-height:1.6}
+[hidden]{display:none !important}
+.app{display:grid;grid-template-columns:310px 1fr;gap:16px;height:100vh;height:100dvh;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;overflow:auto;min-height:0}
+h1{font-size:19px;margin:0;letter-spacing:.04em}
+.lead{margin:2px 0 0;color:var(--sub);font-size:12.5px}
+h2{font-size:12px;margin:0 0 8px;color:var(--sub);font-weight:600;letter-spacing:.08em}
+.dirs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.parts{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.parts .btn{padding:7px 0;font-size:12.5px}
+.btn{appearance:none;border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 6px;font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
+.btn:hover{background:var(--accent-soft)}
+.btn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.slider{display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:10px;margin-bottom:4px}
+.slider label{font-weight:600;min-width:2.4em}
+.slider output{font-variant-numeric:tabular-nums;color:var(--sub);font-size:13px;min-width:3.2em;text-align:right}
+.slider input{width:100%;accent-color:var(--accent);height:28px;margin:0}
+.presets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}
+
+/* ツボの一覧 */
+.tsubo{display:flex;flex-direction:column;gap:8px;flex:1 1 0;min-height:272px}
+.tsubo h2{margin:0;display:flex;align-items:baseline;gap:8px}
+.tsubo h2 span{font-weight:400;letter-spacing:0}
+.pen{display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 6px;font-size:14px;font-weight:600}
+.pen svg{width:17px;height:17px;flex:none}
+.pen[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;overflow:auto;flex:1 1 0;min-height:0}
+#list li{display:grid;grid-template-columns:1fr auto;gap:5px}
+.item{display:flex;align-items:center;gap:8px;text-align:left;padding:7px 9px;min-width:0}
+.item .dot{flex:none;width:11px;height:11px;border-radius:50%;border:2px solid var(--sub);background:transparent}
+.item[aria-pressed="true"] .dot{background:var(--pin);border-color:var(--pin)}
+.item[aria-pressed="true"]{border-color:var(--line);background:#fff;font-weight:400}
+.item[aria-pressed="false"]{color:var(--sub)}
+.item .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item.other .nm::after{content:"（別の部位）";font-size:11px;color:var(--sub)}
+li.sel .item{border-color:var(--accent);background:var(--accent-soft)}
+.more{font-size:12px;padding:7px 9px;color:var(--sub)}
+.empty{font-size:12.5px;color:var(--sub);margin:0;line-height:1.7;flex:1 1 0}
+.empty:not([hidden])~.io{margin-top:auto}
+#list:empty{display:none}
+.io .btn{font-size:12px;color:var(--sub)}
+#carryBtn{font-size:12.5px;border-style:dashed;border-color:var(--accent);color:var(--accent)}
+
+.foot{display:flex;flex-direction:column;gap:4px}
+.status{font-size:11.5px;color:var(--sub);margin:0;min-height:1.2em}
+.note{font-size:10.5px;color:var(--sub);margin:0;line-height:1.6}
+
+/* 図 */
+.stage{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-height:0;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+.stage.penon #gl{cursor:crosshair}
+.corner{position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:8px;z-index:3}
+.corner .btn{width:42px;height:42px;border-radius:50%;font-size:20px;line-height:1;padding:0;box-shadow:0 1px 3px rgba(60,40,30,.12);display:grid;place-items:center}
+.corner .btn.small{font-size:11px}
+.corner .pen svg{width:20px;height:20px}
+.hint{position:absolute;right:14px;bottom:10px;font-size:12px;color:var(--sub);pointer-events:none}
+.hint .touch{display:none}
+@media (pointer:coarse){.hint .mouse{display:none}.hint .touch{display:inline}}
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--sub);font-size:14px;pointer-events:none}
+.guide{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:3;max-width:calc(100% - 140px);background:var(--accent);color:#fff;font-size:13px;line-height:1.5;
+  padding:6px 14px;border-radius:999px;pointer-events:none;box-shadow:0 2px 8px rgba(60,40,30,.2);text-align:center}
+.guide.warn{background:#5a4a41}
+
+/* ツボの点とタグ */
+.tags{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.tag{position:absolute;left:0;top:0;pointer-events:none}
+.tag .pin{position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--pin);border:2.5px solid #fff;
+  box-shadow:0 0 0 1px rgba(60,30,20,.45),0 1px 4px rgba(60,30,20,.35);pointer-events:auto;cursor:pointer;touch-action:none}
+.tag .name{position:absolute;left:8px;bottom:8px;appearance:none;font:inherit;font-size:12.5px;line-height:1.3;white-space:nowrap;max-width:14em;overflow:hidden;text-overflow:ellipsis;
+  color:var(--ink);background:rgba(255,255,255,.94);border:1px solid rgba(120,90,75,.55);border-radius:9px 9px 9px 2px;padding:2px 8px 3px;
+  box-shadow:0 1px 4px rgba(60,30,20,.22);pointer-events:auto;cursor:pointer;touch-action:none}
+.tag.sel{z-index:2}
+.tag.sel .name{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.tag.sel .pin{box-shadow:0 0 0 2px var(--accent),0 0 0 6px rgba(196,99,63,.28)}
+.tag.draft .name{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* 名前と説明のカード */
+.cardbox{position:absolute;right:12px;top:12px;width:min(300px,max(232px,46%));max-width:calc(100% - 24px);z-index:4;background:#fff;border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 6px 24px rgba(60,40,30,.18);padding:14px;-webkit-user-select:text;user-select:text}
+.cardbox.left{right:auto;left:68px;max-width:calc(100% - 80px)}
+.cardbox h3{margin:0 0 6px;font-size:16px;line-height:1.4;overflow-wrap:anywhere}
+.cardbox .desc{margin:0 0 12px;font-size:13.5px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto}
+.cardbox .desc.none{color:var(--sub)}
+.cardbox label{display:block;font-size:12px;color:var(--sub);font-weight:600;margin-bottom:8px}
+.cardbox input,.cardbox textarea{display:block;width:100%;margin-top:3px;font:inherit;font-size:16px;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff}
+.cardbox .row:has(>.btn:only-child),body[data-role="viewer"] #cardView .row{grid-template-columns:1fr}
+.cardbox textarea{resize:vertical;min-height:84px;line-height:1.5}
+.cardbox .row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cardbox .row+.row{margin-top:6px}
+.cardbox .quiet{font-size:12px;color:var(--sub)}
+.cardbox .danger.armed{background:#B3261E;border-color:#B3261E;color:#fff}
+.credit{display:none}
+
+/* ログイン・メンバー管理 */
+.inp{display:block;width:100%;margin-top:3px;font:inherit;font-size:16px;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+.field{display:block;font-size:12px;color:var(--sub);font-weight:600;margin:12px 0 0}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover{background:#b3572f}
+.gate{position:fixed;inset:0;z-index:20;background:var(--bg);display:grid;place-items:center;padding:20px;overflow:auto}
+.gatebox{width:min(380px,100%);background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 24px 20px;box-shadow:0 6px 24px rgba(60,40,30,.10)}
+.gmsg{margin:10px 0 4px;font-size:13.5px;line-height:1.8;overflow-wrap:anywhere}
+.gatebox .wide{width:100%;margin-top:18px;padding:10px;font-size:15px}
+.links{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 16px;margin-top:10px}
+.linkbtn{appearance:none;border:0;background:none;color:var(--accent);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;padding:6px 0}
+.waitbtns{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.waitbtns .btn{padding:10px}
+.err{color:#B3261E;font-size:13px;margin:10px 0 0;min-height:1.3em;overflow-wrap:anywhere}
+.err.ok{color:#2E6B3A}
+.acct{display:grid;grid-template-columns:1fr auto auto;gap:2px 6px;align-items:center;font-size:11.5px;color:var(--sub)}
+.acct span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#acctWho{grid-column:1/-1}
+.acct .btn{font-size:12px;padding:5px 9px;color:var(--sub)}
+.modal{position:fixed;inset:0;z-index:15;background:rgba(58,47,41,.38);display:grid;place-items:center;padding:16px}
+.modalbox{width:min(460px,100%);max-height:100%;overflow:auto;background:#fff;border-radius:14px;padding:20px;box-shadow:0 10px 40px rgba(60,40,30,.3)}
+.modalbox h2{font-size:16px;color:var(--ink);letter-spacing:.02em;margin:0 0 4px}
+.mnote{font-size:12.5px;color:var(--sub);margin:0 0 12px;line-height:1.7}
+#memberList{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:6px}
+#memberList li{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:7px 9px}
+#memberList .who{min-width:0;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+#memberList .who small{display:block;color:var(--sub);font-size:11.5px}
+#memberList select{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:7px;padding:5px 4px;background:#fff;color:var(--ink)}
+#memberList .btn{font-size:12px;padding:6px 8px;color:var(--sub)}
+#memberList .btn.armed{background:#B3261E;border-color:#B3261E;color:#fff}
+#memberList .tagrole{font-size:12px;color:var(--sub);grid-column:2/-1}
+.modalbox .row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px}
+body[data-role="viewer"] .edit-only{display:none !important}
+body:not([data-role="owner"]) .owner-only{display:none !important}
+
+/* 幅がせまい画面（iPad の縦向き・スマホ）：操作を上にまとめ、図を大きく */
+@media (max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr) auto;gap:10px}
+  .panel{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;padding:12px 14px;overflow:visible;align-items:start}
+  .panel>div:first-child{grid-column:1/-1}
+  h1{font-size:16px}
+  .lead,.note,.empty{display:none}
+  h2{margin-bottom:5px}
+  .parts{gap:6px}
+  .parts .btn{font-size:13px}
+  .secParts{grid-column:1/-1}
+  .tsubo{grid-column:1/-1;min-height:0;flex:none;display:grid;grid-template-columns:auto auto auto auto 1fr;align-items:center;gap:6px}
+  .tsubo h2{grid-column:1/-1}
+  .tsubo .two{display:contents}
+  .tsubo .pen{padding:7px 12px}
+  #carryBtn{grid-column:1/-1}
+  .tsubo .io{justify-self:end}
+  #list{grid-column:1/-1;flex-direction:row;overflow-x:auto;overflow-y:hidden;min-height:0;padding-bottom:2px}
+  #list li{flex:none;max-width:15em}
+  .foot{grid-column:1/-1;margin:0;flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
+  .acct{grid-template-columns:auto auto auto auto;max-width:75%}
+  #acctWho{grid-column:auto}
+  .status{min-height:0}
+  .btn{padding:7px 6px}
+  .credit{display:block;font-size:10px;line-height:1.5;color:var(--sub);margin:0;padding:0 4px}
+}
+@media (max-width:560px){
+  .panel{grid-template-columns:1fr}
+  .parts{grid-template-columns:repeat(3,1fr)}
+  .tsubo{grid-template-columns:1fr 1fr}
+  .tsubo .pen,.tsubo .io{grid-column:1/-1;justify-self:stretch}
+}
+</style>
+<script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <div><h1>ツボマップ3D</h1></div>
+    <section><h2>向き</h2>
+      <div class="dirs">
+        <button class="btn" data-dir="front">正面</button>
+        <button class="btn" data-dir="back">後面</button>
+        <button class="btn" data-dir="right">右側</button>
+        <button class="btn" data-dir="left">左側</button>
+      </div>
+    </section>
+    <section><h2>透過</h2>
+      <div class="slider"><label for="skin">皮膚</label><input id="skin" type="range" min="0" max="100" value="100"><output id="skinOut" for="skin">100%</output></div>
+      <div class="slider"><label for="muscle">筋肉</label><input id="muscle" type="range" min="0" max="100" value="100"><output id="muscleOut" for="muscle">100%</output></div>
+      <div class="presets">
+        <button class="btn" data-preset="100,100">皮膚</button>
+        <button class="btn" data-preset="0,100">筋肉</button>
+        <button class="btn" data-preset="0,0">骨</button>
+        <button class="btn" data-preset="45,100">半透明</button>
+      </div>
+    </section>
+    <section class="secParts"><h2>部位</h2>
+      <div class="parts">
+        <button class="btn" data-part="all" aria-pressed="true">全身</button>
+        <button class="btn" data-part="0" aria-pressed="false" disabled>体幹</button>
+        <button class="btn" data-part="1" aria-pressed="false" disabled>右腕</button>
+        <button class="btn" data-part="2" aria-pressed="false" disabled>左腕</button>
+        <button class="btn" data-part="3" aria-pressed="false" disabled>右脚</button>
+        <button class="btn" data-part="4" aria-pressed="false" disabled>左脚</button>
+      </div>
+    </section>
+    <section class="tsubo"><h2>ツボ<span id="count"></span></h2>
+      <button class="btn pen edit-only" id="penBtn" aria-pressed="false" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 20l1.2-5.2L16.4 3.6l4 4L9.2 18.8z"/><path d="M13.6 6.4l4 4"/></svg>
+        <span id="penLabel">ツボを打つ</span>
+      </button>
+      <button class="btn edit-only" id="carryBtn" hidden></button>
+      <div class="two" id="two1">
+        <button class="btn" id="showAll">すべて表示</button>
+        <button class="btn" id="hideAll">すべて隠す</button>
+      </div>
+      <ul id="list" aria-label="入力したツボ"></ul>
+      <p class="empty" id="empty">まだツボがありません。<span class="edit-only">「ツボを打つ」を押してから、体の表面をタップしてください。</span></p>
+      <div class="two io edit-only">
+        <button class="btn" id="exportBtn">書き出し</button>
+        <button class="btn" id="importBtn">読み込み</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+    </section>
+    <div class="foot">
+      <div class="acct" id="acct" hidden><span id="acctWho"></span><span id="acctRole"></span><button class="btn owner-only" id="membersBtn">メンバー</button><button class="btn" id="signOutBtn">ログアウト</button></div>
+      <p class="status" id="status" aria-live="polite"></p>
+      <p class="note">人体モデル：BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International。形を簡略化し、体表の一部を改変。表示に three.js（MIT License）を使用。</p>
+    </div>
+  </aside>
+  <main class="stage" id="stage" aria-label="人体の3D図">
+    <div class="corner">
+      <button class="btn pen edit-only" id="penBtn2" aria-pressed="false" aria-label="ツボを打つ" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 20l1.2-5.2L16.4 3.6l4 4L9.2 18.8z"/><path d="M13.6 6.4l4 4"/></svg>
+      </button>
+      <button class="btn" id="zin" aria-label="拡大">＋</button>
+      <button class="btn" id="zout" aria-label="縮小">−</button>
+      <button class="btn small" id="zreset" aria-label="表示を元に戻す">戻す</button>
+    </div>
+    <canvas id="gl" tabindex="0"></canvas>
+    <div class="tags" id="tags"></div>
+    <div class="guide" id="guide" role="status" hidden></div>
+    <div class="cardbox" id="card" hidden>
+      <div id="cardView">
+        <h3 id="cvName"></h3>
+        <p class="desc" id="cvNote"></p>
+        <div class="row"><button class="btn edit-only" id="cvEdit">編集</button><button class="btn" id="cvClose">閉じる</button></div>
+      </div>
+      <form id="cardEdit" autocomplete="off">
+        <label>名前<input id="ceName" type="text" maxlength="40" placeholder="ツボの名前" enterkeyhint="done"></label>
+        <label>説明<textarea id="ceNote" rows="4" maxlength="1000" placeholder="効能、取り方、メモなど"></textarea></label>
+        <div class="row"><button class="btn primary" type="submit">保存</button><button class="btn" type="button" id="ceCancel">キャンセル</button></div>
+        <div class="row" id="ceMore"><button class="btn quiet" type="button" id="ceMove">位置を直す</button><button class="btn quiet danger" type="button" id="ceDelete">削除</button></div>
+      </form>
+    </div>
+    <div class="loading" id="loading">読み込み中…</div>
+    <div class="hint"><span class="mouse">ドラッグで回転・ホイールで拡大・右ドラッグで移動</span><span class="touch">1本指で回転・2本指で拡大と移動</span></div>
+  </main>
+  <p class="credit">人体モデル：BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International。形を簡略化し、体表の一部を改変。表示に three.js（MIT）を使用。</p>
+</div>
+<div class="modal" id="members" hidden>
+  <div class="modalbox" role="dialog" aria-labelledby="membersTitle">
+    <h2 id="membersTitle">メンバー（ツボを見られる人）</h2>
+    <p class="mnote">ここに入れたメールアドレスで登録・ログインした人だけが、ツボを見られます。「取り消し」を押すと、その人は見られなくなります。</p>
+    <ul id="memberList"></ul>
+    <form id="memberForm" autocomplete="off">
+      <label class="field">追加する人のメールアドレス<input class="inp" id="mEmail" type="email" required></label>
+      <label class="field">名前・メモ（自分用）<input class="inp" id="mMemo" type="text" maxlength="40"></label>
+      <label class="field">できること<select class="inp" id="mRole"><option value="viewer">見るだけ</option><option value="editor">編集もできる</option></select></label>
+      <div class="row"><button class="btn primary" type="submit">追加</button><button class="btn" type="button" id="membersClose">閉じる</button></div>
+    </form>
+    <p class="err" id="memberErr" role="alert"></p>
+  </div>
+</div>
+<div class="gate" id="gate">
+  <div class="gatebox">
+    <h1>ツボマップ3D</h1>
+    <p class="gmsg" id="gateMsg">読み込み中…</p>
+    <form id="authForm" hidden>
+      <label class="field">メールアドレス<input class="inp" id="auEmail" type="email" autocomplete="username" required></label>
+      <label class="field" id="auPwField">パスワード<input class="inp" id="auPw" type="password" autocomplete="current-password"></label>
+      <button class="btn primary wide" type="submit" id="auSubmit">ログイン</button>
+      <div class="links">
+        <button type="button" class="linkbtn" id="toSignup">はじめての方（登録）</button>
+        <button type="button" class="linkbtn" id="toReset">パスワードを忘れた</button>
+        <button type="button" class="linkbtn" id="toLogin" hidden>ログインに戻る</button>
+      </div>
+    </form>
+    <div class="waitbtns" id="gateWait" hidden>
+      <button class="btn primary" id="recheckBtn">確かめる</button>
+      <button class="btn" id="resendBtn">確認メールをもう一度送る</button>
+      <button class="btn" id="gateOut">ログアウト</button>
+    </div>
+    <p class="err" id="gateErr" role="alert"></p>
+  </div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

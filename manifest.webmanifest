@@ -1,0 +1,30 @@
+{
+ "name": "ツボマップ3D",
+ "short_name": "ツボマップ",
+ "lang": "ja",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "any",
+ "background_color": "#FAF6F1",
+ "theme_color": "#FAF6F1",
+ "description": "回して見られる人体図に、自分のツボを打って名前と説明を残せます",
+ "icons": [
+  {
+   "src": "icons/icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icons/icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "icons/icon-maskable-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}
