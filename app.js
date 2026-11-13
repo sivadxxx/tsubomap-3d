@@ -206,6 +206,12 @@ const tagsEl = $('tags'), listEl = $('list'), guideEl = $('guide'), cardEl = $('
 const num = v => typeof v === 'number' && isFinite(v);
 const vec3ok = a => Array.isArray(a) && a.length === 3 && a.every(num);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+function cleanView(v) {      // 打ったときの画面：カメラの位置 c、見ている中心 t、皮膚と筋肉の透け具合 s・m、部位 part、画面の縦横比 a
+  if (!v || typeof v !== 'object' || !vec3ok(v.c) || !vec3ok(v.t)) return null;
+  const pct = x => num(x) ? Math.min(100, Math.max(0, Math.round(x))) : 100;
+  return { c: v.c.map(x => Math.round(x * 10) / 10), t: v.t.map(x => Math.round(x * 10) / 10), s: pct(v.s), m: pct(v.m),
+    part: Number.isInteger(v.part) && v.part >= 0 && v.part <= 4 ? v.part : 'all', a: num(v.a) && v.a > 0 ? Math.round(v.a * 1000) / 1000 : 1 };
+}
 function clean(o) {         // 保存データ・読み込んだファイルの 1 件を確かめて整える
   if (!o || typeof o !== 'object' || !vec3ok(o.p)) return null;
   const n = vec3ok(o.n) ? new THREE.Vector3(...o.n) : new THREE.Vector3(0, 0, 1);
@@ -218,7 +224,7 @@ function clean(o) {         // 保存データ・読み込んだファイルの 
     name: String(o.name == null ? '' : o.name).slice(0, 40) || 'ツボ',
     note: String(o.note == null ? '' : o.note).slice(0, 1000),
     p: o.p.map(v => Math.round(v * 10) / 10), n: n.toArray().map(v => Math.round(v * 1000) / 1000),
-    region, show: !hiddenIds.has(id),
+    region, show: !hiddenIds.has(id), view: cleanView(o.view),
   };
 }
 const byAge = (a, b) => a.created - b.created || (a.id < b.id ? -1 : 1);
@@ -250,7 +256,7 @@ function makeTag(id) {
     if (id === DRAFT || movingId) return;
     const pt = points.find(q => q.id === id);
     if (ruler.on && pt) rulerAdd({ p: pt.p, n: pt.n });      // ものさしを使っているときは、ツボを測る点として選ぶ
-    else openView(id);
+    else showPoint(id);
   };
   pin.addEventListener('click', open); name.addEventListener('click', open);
   tagsEl.append(el); tagEls.set(id, el);
@@ -322,7 +328,7 @@ function renderList() {
     b.addEventListener('click', () => { pt.show = !pt.show; saveHidden(); renderList(); dirty = true; });
     const more = document.createElement('button'); more.type = 'button'; more.className = 'btn more'; more.textContent = '詳細';
     more.setAttribute('aria-label', pt.name + ' の詳細');
-    more.addEventListener('click', () => { openView(pt.id); lookAt(pt); });
+    more.addEventListener('click', () => showPoint(pt.id));
     li.append(b, more); listEl.append(li);
   }
   $('count').textContent = points.length ? `${points.length} 件` : '';
@@ -333,6 +339,26 @@ function renderList() {
 function setAll(on) { for (const pt of points) pt.show = on; saveHidden(); renderList(); dirty = true; }
 $('showAll').addEventListener('click', () => setAll(true));
 $('hideAll').addEventListener('click', () => setAll(false));
+// 体の表面のツボは、見る角度によって、下の筋肉や骨とずれて見える。そこで、打ったときの画面（向き・近さ・透け具合・部位）を
+// ツボと一緒に覚えておき、選んだときにその画面へ戻す
+function currentView() {
+  return cleanView({ c: camera.position.toArray(), t: controls.target.toArray(), s: +skinIn.value, m: +muscleIn.value, part, a: camera.aspect });
+}
+function restoreView(pt) {
+  const v = pt.view; if (!v) return false;
+  if (v.part !== part) setPart(v.part, true);
+  if (+skinIn.value !== v.s || +muscleIn.value !== v.m) { skinIn.value = v.s; muscleIn.value = v.m; applyLayers(); }
+  // 記憶したときより横幅のせまい画面では、同じ範囲が入るように少し離れる
+  const c1 = new THREE.Vector3(...v.t), off = new THREE.Vector3(...v.c).sub(c1).multiplyScalar(Math.max(1, v.a / camera.aspect));
+  if (off.length() > controls.maxDistance) off.setLength(controls.maxDistance);
+  anim = { t0: performance.now(), p0: camera.position.clone(), p1: c1.clone().add(off), c0: controls.target.clone(), c1 };
+  return true;
+}
+function showPoint(id) {    // ツボを選ぶ：説明を出し、打ったときの画面に戻す（画面を覚えていない古いツボは、正面から見る位置へ回る）
+  const pt = points.find(q => q.id === id); if (!pt) return;
+  openView(id);
+  if (!restoreView(pt)) lookAt(pt);
+}
 function lookAt(pt) {       // そのツボを正面から見る位置へ回り込む
   if (part !== 'all' && pt.region !== part) setPart('all', true);
   const c1 = new THREE.Vector3(...pt.p), dist = Math.min(camera.position.distanceTo(controls.target), 1400);
@@ -526,12 +552,12 @@ function onTap(cx, cy) {
   if (movingId) {
     const pt = points.find(q => q.id === movingId);
     movingId = null; stage.classList.toggle('penon', pen);
-    if (pt) { pt.p = h.p; pt.n = h.n; pt.region = h.region; pt.show = true; saveHidden(); pushPoint(pt); renderList(); openView(pt.id); }
+    if (pt) { pt.p = h.p; pt.n = h.n; pt.region = h.region; pt.view = currentView(); pt.show = true; saveHidden(); pushPoint(pt); renderList(); openView(pt.id); }
     showGuide(); dirty = true;
     return;
   }
   const fresh = !draft;
-  draft = h;
+  draft = h; draft.view = currentView();        // 打ったときの画面も覚える
   if (fresh || selId !== DRAFT) openEdit(DRAFT);      // 入力中にもう一度タップしたら、位置だけ打ち直す
   else sideCard(draft.p);
   syncTags();
@@ -570,6 +596,7 @@ function openView(id) {
   select(id); disarm();
   cvName.textContent = pt.name;
   cvNote.textContent = pt.note || '説明はまだありません'; cvNote.classList.toggle('none', !pt.note);
+  $('cvView').hidden = !pt.view;
   $('cardView').hidden = false; $('cardEdit').hidden = true; cardEl.hidden = false;
   sideCard(pt.p); showGuide();
 }
@@ -593,7 +620,7 @@ function applyEdit() {      // 入力中の名前と説明を保存する。保�
   let pt;
   if (selId === DRAFT) {
     if (!draft) return null;
-    pt = { id: uid(), created: Date.now(), name: name || autoName(), note, p: draft.p, n: draft.n, region: draft.region, show: true };
+    pt = { id: uid(), created: Date.now(), name: name || autoName(), note, p: draft.p, n: draft.n, region: draft.region, view: draft.view || null, show: true };
     points.push(pt); draft = null;
   } else {
     pt = points.find(p => p.id === selId); if (!pt) return null;
@@ -612,6 +639,11 @@ $('cardEdit').addEventListener('submit', e => {
 $('ceCancel').addEventListener('click', () => { if (selId === DRAFT) closeCard(); else openView(selId); });
 $('cvEdit').addEventListener('click', () => { if (canEdit()) openEdit(selId); });
 $('cvClose').addEventListener('click', closeCard);
+$('cvView').addEventListener('click', () => { const pt = points.find(p => p.id === selId); if (pt) restoreView(pt); });
+$('ceView').addEventListener('click', () => {
+  const pt = applyEdit(); if (!pt || !canEdit()) return;
+  pt.view = currentView(); pushPoint(pt); openView(pt.id); toast('いまの画面を記憶しました');
+});
 $('ceMove').addEventListener('click', () => {
   const pt = applyEdit(); if (!pt) return;
   if (pen) setPen(false);

@@ -2,7 +2,7 @@
 //
 // データの形
 //   members/{メールアドレス}  { role: 'owner' | 'editor' | 'viewer', memo }   … 見られる人の名簿（管理者だけが書ける）
-//   points/{id}               { name, note, p, n, region, created, updated }  … ツボ（名簿にいる人が読める。editor・owner が書ける）
+//   points/{id}               { name, note, p, n, region, created, view, updated }  … ツボ。view は打ったときの画面（向き・透け具合・部位）（名簿にいる人が読める。editor・owner が書ける）
 // だれが読める・書けるかは、Firebase 側のルール（src/firestore.rules）で守る。この画面側の出し分けは見た目だけ。
 export const SDK_VERSION = '12.15.0';
 const BASE = `https://www.gstatic.com/firebasejs/${SDK_VERSION}/`;
@@ -53,7 +53,7 @@ export async function createBackend(config) {
     onPoints(cb, onErr) {
       return F.onSnapshot(F.collection(db, 'points'), snap => cb(snap.docs.map(d => ({ ...d.data(), id: d.id }))), e => { cb([]); if (onErr) onErr(e); });
     },
-    savePoint: pt => F.setDoc(pointDoc(pt.id), { name: pt.name, note: pt.note, p: pt.p, n: pt.n, region: pt.region, created: pt.created, updated: F.serverTimestamp() }),
+    savePoint: pt => F.setDoc(pointDoc(pt.id), { name: pt.name, note: pt.note, p: pt.p, n: pt.n, region: pt.region, created: pt.created, view: pt.view || null, updated: F.serverTimestamp() }),
     deletePoint: id => F.deleteDoc(pointDoc(id)),
     onMembers(cb, onErr) {
       return F.onSnapshot(F.collection(db, 'members'), snap => cb(snap.docs.map(d => ({ email: d.id, role: d.data().role, memo: d.data().memo || '' }))), e => { cb([]); if (onErr) onErr(e); });
