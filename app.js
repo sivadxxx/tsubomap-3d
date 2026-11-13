@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './lib/OrbitControls.js';
 import { firebaseConfig } from './config.js';
 import { createBackend, explain } from './backend-firebase.js';
+import { measure } from './kotsudo.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage'), canvas = $('gl');
@@ -105,7 +106,7 @@ function pass(show, opacity) {
 }
 function draw() {
   const s = skinIn.value / 100, m = muscleIn.value / 100;
-  const tags = loaded.skin && anyTagShown();
+  const tags = loaded.skin && (anyTagShown() || !!ruler.a);
   if (tags) depthPass();
   renderer.setRenderTarget(null);
   renderer.clear();
@@ -244,7 +245,13 @@ function makeTag(id) {
   const pin = document.createElement('span'); pin.className = 'pin';
   const name = document.createElement('button'); name.type = 'button'; name.className = 'name';
   el.append(pin, name);
-  const open = e => { e.stopPropagation(); if (id !== DRAFT && !movingId) openView(id); };
+  const open = e => {
+    e.stopPropagation();
+    if (id === DRAFT || movingId) return;
+    const pt = points.find(q => q.id === id);
+    if (ruler.on && pt) rulerAdd({ p: pt.p, n: pt.n });      // ものさしを使っているときは、ツボを測る点として選ぶ
+    else openView(id);
+  };
   pin.addEventListener('click', open); name.addEventListener('click', open);
   tagsEl.append(el); tagEls.set(id, el);
   return el;
@@ -266,7 +273,7 @@ const _v = new THREE.Vector3(), _c = new THREE.Vector3();
 function project(p, n) {    // 画面上の位置を返す。体の向こう側・画面の外なら null
   _v.set(p[0], p[1], p[2]);
   const dx = _c.x - _v.x, dy = _c.y - _v.y, dz = _c.z - _v.z;
-  if ((n[0] * dx + n[1] * dy + n[2] * dz) / Math.hypot(dx, dy, dz) < -0.15) return null;      // 面が向こうを向いている
+  if (n && (n[0] * dx + n[1] * dy + n[2] * dz) / Math.hypot(dx, dy, dz) < -0.15) return null;      // 面が向こうを向いている
   _v.applyMatrix4(camera.matrixWorldInverse);
   const vz = -_v.z;
   if (vz < camera.near) return null;
@@ -298,6 +305,7 @@ function placeTags(on) {
     const el = tagEls.get(DRAFT), s = on && el ? project(draft.p, draft.n) : null;
     if (el) { el.hidden = !s; if (s) el.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px)`; }
   }
+  placeRuler(on);
 }
 
 // ---- 一覧
@@ -335,7 +343,8 @@ function lookAt(pt) {       // そのツボを正面から見る位置へ回り�
 let toastTimer = 0, toasting = false;
 function showGuide() {      // カードを開いている間は、じゃまにならないように案内を消す
   if (toasting) return;
-  const msg = !cardEl.hidden ? '' : movingId ? '新しい位置をタップしてください' : pen ? '体の表面をタップするとツボを打てます' : '';
+  const msg = !cardEl.hidden ? '' : movingId ? '新しい位置をタップしてください' : pen ? '体の表面をタップするとツボを打てます'
+    : !ruler.on ? '' : !ruler.a ? '測りはじめの点をタップしてください（ツボのタグも選べます）' : !ruler.b ? '測り終わりの点をタップしてください' : '';
   guideEl.classList.remove('warn');
   guideEl.textContent = msg; guideEl.hidden = !msg;
 }
@@ -348,6 +357,7 @@ function toast(msg) {
 // ---- ペン
 function setPen(on) {
   pen = on && ready && canEdit();
+  if (pen && ruler.on) setRuler(false);
   if (!pen && draft) { draft = null; if (selId === DRAFT) closeCard(); syncTags(); }
   if (pen) movingId = null;
   for (const id of ['penBtn', 'penBtn2']) $(id).setAttribute('aria-pressed', String(pen));
@@ -358,6 +368,113 @@ function setPen(on) {
 }
 $('penBtn').addEventListener('click', () => setPen(!pen));
 $('penBtn2').addEventListener('click', () => setPen(!pen));
+
+// ---- ものさし：体の表面の 2 点の間を、表面に沿って測り、その部位の骨度で寸に直す
+const ruler = { on: false, a: null, b: null, path: null };      // a, b: { p:[x,y,z], n:[x,y,z] }、path: 表面に沿った点の並び
+let skinTri = null;         // 全身の皮膚の三角形（頂点 9 個ずつ）と、その中心
+function buildSkinTris() {
+  const m = groups.skin.children.find(x => x.userData.region === 255);
+  const pos = m.geometry.attributes.position, idx = m.geometry.index.array, n = idx.length / 3;
+  const V = new Float32Array(n * 9), C = new Float32Array(n * 3), v = new THREE.Vector3();
+  for (let i = 0; i < idx.length; i++) { v.fromBufferAttribute(pos, idx[i]).applyMatrix4(m.matrix); V[i * 3] = v.x; V[i * 3 + 1] = v.y; V[i * 3 + 2] = v.z; }
+  for (let t = 0; t < n; t++) for (let k = 0; k < 3; k++) C[t * 3 + k] = (V[t * 9 + k] + V[t * 9 + 3 + k] + V[t * 9 + 6 + k]) / 3;
+  skinTri = { V, C, n };
+}
+function lineHit(o, d, sub) {       // 点 o を通る向き d の直線が皮膚と交わるところ。前向き・後ろ向きそれぞれ、いちばん近いもの
+  const V = skinTri.V; let tp = Infinity, ip = -1, tm = Infinity, im = -1;
+  for (let s = 0; s < sub.length; s++) {
+    const k = sub[s] * 9;
+    const ax = V[k], ay = V[k + 1], az = V[k + 2];
+    const e1x = V[k + 3] - ax, e1y = V[k + 4] - ay, e1z = V[k + 5] - az, e2x = V[k + 6] - ax, e2y = V[k + 7] - ay, e2z = V[k + 8] - az;
+    const px = d.y * e2z - d.z * e2y, py = d.z * e2x - d.x * e2z, pz = d.x * e2y - d.y * e2x;
+    const det = e1x * px + e1y * py + e1z * pz;
+    if (det > -1e-9 && det < 1e-9) continue;
+    const inv = 1 / det, tx = o.x - ax, ty = o.y - ay, tz = o.z - az;
+    const u = (tx * px + ty * py + tz * pz) * inv; if (u < 0 || u > 1) continue;
+    const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+    const w = (d.x * qx + d.y * qy + d.z * qz) * inv; if (w < 0 || u + w > 1) continue;
+    const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+    if (t >= 0) { if (t < tp) { tp = t; ip = sub[s]; } } else if (-t < tm) { tm = -t; im = sub[s]; }
+  }
+  return { tp, ip, tm, im };
+}
+function surfacePath(a, b) {        // 2 点の間を半分ずつに割りながら、まん中の点を皮膚の上へ押し出していく
+  const A = new THREE.Vector3(...a.p), B = new THREE.Vector3(...b.p), len = A.distanceTo(B);
+  if (len < 0.5) return [A, B];
+  const ab = B.clone().sub(A), R = len * 0.6 + 25, R2 = R * R, C = skinTri.C, sub = [];
+  for (let t = 0; t < skinTri.n; t++) {      // 2 点を結ぶ線の近くにある三角形だけを相手にする
+    const cx = C[t * 3] - A.x, cy = C[t * 3 + 1] - A.y, cz = C[t * 3 + 2] - A.z;
+    const u = Math.min(1, Math.max(0, (cx * ab.x + cy * ab.y + cz * ab.z) / (len * len)));
+    const dx = cx - ab.x * u, dy = cy - ab.y * u, dz = cz - ab.z * u;
+    if (dx * dx + dy * dy + dz * dz < R2) sub.push(t);
+  }
+  const V = skinTri.V, view = camera.position.clone();
+  const split = (p0, n0, p1, n1, depth, out) => {
+    if (!depth) return;
+    const mid = p0.clone().add(p1).multiplyScalar(0.5), dir = n0.clone().add(n1);
+    if (dir.length() < 0.35) {      // 体をはさんで反対側どうし：見ている側を回る道にする
+      const e = p1.clone().sub(p0).normalize(); dir.copy(view).sub(mid); dir.addScaledVector(e, -dir.dot(e));
+    }
+    dir.normalize();
+    const h = lineHit(mid, dir, sub);
+    // まん中の点は、ふつうは体の中にある（外へ向かって皮膚に出る）。くぼんだ所では体の外にある（内へ向かって皮膚に当たる）
+    const fwd = h.ip >= 0 && (h.im < 0 || h.tp <= 2.5 * h.tm + 5), tri = fwd ? h.ip : h.im;
+    let pm = mid, nm = dir;
+    if (tri >= 0) {
+      pm = mid.clone().addScaledVector(dir, fwd ? h.tp : -h.tm);
+      const k = tri * 9, e1 = new THREE.Vector3(V[k + 3] - V[k], V[k + 4] - V[k + 1], V[k + 5] - V[k + 2]), e2 = new THREE.Vector3(V[k + 6] - V[k], V[k + 7] - V[k + 1], V[k + 8] - V[k + 2]);
+      nm = e1.cross(e2).normalize(); if (nm.dot(dir) < 0) nm.negate();
+    }
+    split(p0, n0, pm, nm, depth - 1, out); out.push(pm); split(pm, nm, p1, n1, depth - 1, out);
+  };
+  const out = [A];
+  split(A, new THREE.Vector3(...a.n), B, new THREE.Vector3(...b.n), len < 12 ? 2 : len < 50 ? 3 : len < 160 ? 4 : 5, out);
+  out.push(B);
+  return out;
+}
+const _rp = new THREE.Vector3();
+function rulerAdd(h) {
+  if (!ruler.a || ruler.b) { ruler.a = h; ruler.b = null; ruler.path = null; }
+  else {
+    ruler.b = h; ruler.path = surfacePath(ruler.a, h);
+    const r = measure(ruler.path, (x, y, z) => nearestRegion(_rp.set(x, y, z)));
+    $('mSun').textContent = r.sun.toFixed(1) + '寸'; $('mCm').textContent = (r.mm / 10).toFixed(1) + ' cm';
+    $('rlabel').textContent = r.sun.toFixed(1) + '寸';
+    const ul = $('mZones'); ul.textContent = '';
+    for (const z of r.zones) { const li = document.createElement('li'); li.textContent = z; ul.append(li); }
+    ruler.result = r;
+  }
+  $('measure').hidden = !ruler.b;
+  showGuide(); dirty = true;
+}
+function clearRuler() { ruler.a = ruler.b = ruler.path = ruler.result = null; $('measure').hidden = true; showGuide(); dirty = true; }
+function setRuler(on) {
+  ruler.on = on && ready && session.state === 'in';
+  if (ruler.on && pen) setPen(false);
+  if (ruler.on) { movingId = null; if (!cardEl.hidden) closeCard(); }
+  if (!ruler.on && !ruler.b) clearRuler();        // 測りかけはやめる。測り終えた結果は、消すまで残す
+  for (const id of ['rulerBtn', 'rulerBtn2']) $(id).setAttribute('aria-pressed', String(ruler.on));
+  $('rulerLabel').textContent = ruler.on ? '測るのを終了' : '寸を測る';
+  $('rulerBtn2').setAttribute('aria-label', ruler.on ? '測るのを終了' : '寸を測る');
+  stage.classList.toggle('penon', ruler.on || pen || !!movingId);
+  showGuide();
+}
+$('rulerBtn').addEventListener('click', () => setRuler(!ruler.on));
+$('rulerBtn2').addEventListener('click', () => setRuler(!ruler.on));
+$('mClear').addEventListener('click', clearRuler);
+function placeRuler(on) {           // 測った線と両端の点を、図の上に重ねて描く（体の向こう側に回った部分は描かない）
+  const A = $('rpinA'), B = $('rpinB'), lab = $('rlabel'), line = $('rline');
+  const put = (el, q) => { const s = on && q ? project(q, null) : null; el.hidden = !s; if (s) el.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px)`; return s; };
+  put(A, ruler.a && ruler.a.p); put(B, ruler.b && ruler.b.p);
+  let d = '', pen2 = false;
+  if (on && ruler.path) for (const q of ruler.path) {
+    const s = project([q.x, q.y, q.z], null);
+    if (s) { d += (pen2 ? 'L' : 'M') + s.x.toFixed(1) + ' ' + s.y.toFixed(1); pen2 = true; } else pen2 = false;
+  }
+  line.setAttribute('d', d);
+  const mid = ruler.path && ruler.path[ruler.path.length >> 1];
+  put(lab, mid && [mid.x, mid.y, mid.z]);
+}
 
 // ---- 体の表面を探す
 const ray = new THREE.Raycaster(), _ndc = new THREE.Vector2();
@@ -397,6 +514,11 @@ function pick(cx, cy) {     // 画面の点から体の表面を探す。{p, n, 
 }
 function onTap(cx, cy) {
   if (!ready) return;
+  if (ruler.on) {
+    const h = pick(cx, cy);
+    if (!h) toast('体の表面をタップしてください'); else if (h.cap) toast('切り口は測れません。皮膚の上をタップしてください'); else rulerAdd(h);
+    return;
+  }
   if (!canEdit() || (!pen && !movingId)) { if (selId && $('cardEdit').hidden) closeCard(); return; }
   const h = pick(cx, cy);
   if (!h) { toast('体の表面をタップしてください'); return; }
@@ -493,6 +615,7 @@ $('cvClose').addEventListener('click', closeCard);
 $('ceMove').addEventListener('click', () => {
   const pt = applyEdit(); if (!pt) return;
   if (pen) setPen(false);
+  if (ruler.on) setRuler(false);
   movingId = pt.id; closeCard();
   stage.classList.add('penon'); showGuide();
 });
@@ -513,6 +636,7 @@ window.addEventListener('keydown', e => {
   else if (!cardEl.hidden) { if (selId === DRAFT || $('cardEdit').hidden) closeCard(); else openView(selId); }
   else if (movingId) { movingId = null; stage.classList.toggle('penon', pen); showGuide(); }
   else if (pen) setPen(false);
+  else if (ruler.on) setRuler(false);
 });
 
 // ---- ファイルへの書き出しと読み込み（控え・ほかの端末への引っ越し用）
@@ -599,7 +723,7 @@ function onSession(s) {
     unsubPoints = backend.onPoints(setPoints, e => toast('ツボを読み込めませんでした：' + explain(e)));
     auPw.value = '';
   } else {
-    $('acct').hidden = true; setPen(false); movingId = null; closeCard(); closeMembers(); setPoints([]);
+    $('acct').hidden = true; setPen(false); setRuler(false); clearRuler(); movingId = null; closeCard(); closeMembers(); setPoints([]);
     if (s.state === 'out' && was !== 'out' && was !== 'loading') authMode = 'login';
   }
   if (was !== s.state) note(gateErr, '');
@@ -769,9 +893,9 @@ function showOffline() { statusEl.textContent = (modelsReady && swReady) ? 'オ�
     await load('bone');
     statusEl.textContent = 'モデルを読み込み中… 4/4';
     await load('skin_parts', 'skin');          // 部位ごとに切り分けた皮膚
-    buildPartVerts();
+    buildPartVerts(); buildSkinTris();
     document.querySelectorAll('[data-part]').forEach(b => { b.disabled = false; });
-    ready = true; $('penBtn').disabled = $('penBtn2').disabled = false;
+    ready = true; $('penBtn').disabled = $('penBtn2').disabled = $('rulerBtn').disabled = $('rulerBtn2').disabled = false;
     modelsReady = true; showOffline();
   } catch (e) {
     loadingEl.hidden = false; loadingEl.textContent = '読み込みに失敗しました。通信状態を確かめて、開き直してください。';
@@ -785,4 +909,4 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(() => { swReady = true; showOffline(); }).catch(() => {});
   });
 }
-window.__viewer = { camera, controls, goTo, setPart, setPen, onTap, pick, renderer, groups, loaded, get points() { return points; }, get ready() { return ready; }, get session() { return session; }, get backend() { return backend; }, redraw: () => { dirty = true; } };   // 動作確認用
+window.__viewer = { camera, controls, goTo, setPart, setPen, onTap, pick, renderer, groups, loaded, get points() { return points; }, get ready() { return ready; }, get session() { return session; }, get backend() { return backend; }, ruler, setRuler, rulerAdd, redraw: () => { dirty = true; } };   // 動作確認用

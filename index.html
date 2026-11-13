@@ -45,6 +45,8 @@ h2{font-size:12px;margin:0 0 8px;color:var(--sub);font-weight:600;letter-spacing
 .pen{display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 6px;font-size:14px;font-weight:600}
 .pen svg{width:17px;height:17px;flex:none}
 .pen[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:6px}
+.tools .pen{font-size:13.5px;padding:9px 4px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;overflow:auto;flex:1 1 0;min-height:0}
 #list li{display:grid;grid-template-columns:1fr auto;gap:5px}
@@ -84,6 +86,20 @@ li.sel .item{border-color:var(--accent);background:var(--accent-soft)}
 .guide{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:3;max-width:calc(100% - 140px);background:var(--accent);color:#fff;font-size:13px;line-height:1.5;
   padding:6px 14px;border-radius:999px;pointer-events:none;box-shadow:0 2px 8px rgba(60,40,30,.2);text-align:center}
 .guide.warn{background:#5a4a41}
+
+/* ものさし（寸を測る） */
+.rsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:hidden}
+#rline{stroke:#1F6F8B;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;paint-order:stroke;filter:drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff)}
+.rmarks{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.rpin{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#1F6F8B;border:2px solid #fff;box-shadow:0 0 0 1px rgba(20,60,80,.5)}
+.rlabel{position:absolute;left:0;top:0;margin:-30px 0 0 8px;font-size:13px;font-weight:700;line-height:1.3;white-space:nowrap;color:#fff;background:#1F6F8B;border-radius:8px;padding:2px 8px;box-shadow:0 1px 4px rgba(20,60,80,.35)}
+.measure{position:absolute;left:12px;bottom:12px;z-index:3;width:min(300px,calc(100% - 24px));background:#fff;border:1px solid var(--line);border-left:4px solid #1F6F8B;border-radius:10px;
+  box-shadow:0 4px 16px rgba(60,40,30,.16);padding:10px 12px;-webkit-user-select:text;user-select:text}
+.mval{margin:0;display:flex;align-items:baseline;gap:8px}
+.mval b{font-size:22px;color:#1F6F8B;font-variant-numeric:tabular-nums}
+.mval span{font-size:13px;color:var(--sub)}
+#mZones{list-style:none;margin:4px 0 8px;padding:0;font-size:11.5px;line-height:1.6;color:var(--sub)}
+.measure .btn{font-size:12px;padding:4px 12px;color:var(--sub)}
 
 /* ツボの点とタグ */
 .tags{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
@@ -161,10 +177,12 @@ body:not([data-role="owner"]) .owner-only{display:none !important}
   .parts{gap:6px}
   .parts .btn{font-size:13px}
   .secParts{grid-column:1/-1}
-  .tsubo{grid-column:1/-1;min-height:0;flex:none;display:grid;grid-template-columns:auto auto auto auto 1fr;align-items:center;gap:6px}
+  .tsubo{grid-column:1/-1;min-height:0;flex:none;display:grid;grid-template-columns:auto auto auto auto auto 1fr;align-items:center;gap:6px}
+  .tools{display:contents}
   .tsubo h2{grid-column:1/-1}
   .tsubo .two{display:contents}
   .tsubo .pen{padding:7px 12px}
+  .hint{display:none}
   #carryBtn{grid-column:1/-1}
   .tsubo .io{justify-self:end}
   #list{grid-column:1/-1;flex-direction:row;overflow-x:auto;overflow-y:hidden;min-height:0;padding-bottom:2px}
@@ -218,10 +236,16 @@ body:not([data-role="owner"]) .owner-only{display:none !important}
       </div>
     </section>
     <section class="tsubo"><h2>ツボ<span id="count"></span></h2>
-      <button class="btn pen edit-only" id="penBtn" aria-pressed="false" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 20l1.2-5.2L16.4 3.6l4 4L9.2 18.8z"/><path d="M13.6 6.4l4 4"/></svg>
-        <span id="penLabel">ツボを打つ</span>
-      </button>
+      <div class="tools">
+        <button class="btn pen edit-only" id="penBtn" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 20l1.2-5.2L16.4 3.6l4 4L9.2 18.8z"/><path d="M13.6 6.4l4 4"/></svg>
+          <span id="penLabel">ツボを打つ</span>
+        </button>
+        <button class="btn pen" id="rulerBtn" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 16.5L16.5 3l4.5 4.5L7.5 21z"/><path d="M7.6 11.9l2 2M10.6 8.9l2 2M13.6 5.9l2 2"/></svg>
+          <span id="rulerLabel">寸を測る</span>
+        </button>
+      </div>
       <button class="btn edit-only" id="carryBtn" hidden></button>
       <div class="two" id="two1">
         <button class="btn" id="showAll">すべて表示</button>
@@ -246,12 +270,22 @@ body:not([data-role="owner"]) .owner-only{display:none !important}
       <button class="btn pen edit-only" id="penBtn2" aria-pressed="false" aria-label="ツボを打つ" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4 20l1.2-5.2L16.4 3.6l4 4L9.2 18.8z"/><path d="M13.6 6.4l4 4"/></svg>
       </button>
+      <button class="btn pen" id="rulerBtn2" aria-pressed="false" aria-label="寸を測る" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 16.5L16.5 3l4.5 4.5L7.5 21z"/><path d="M7.6 11.9l2 2M10.6 8.9l2 2M13.6 5.9l2 2"/></svg>
+      </button>
       <button class="btn" id="zin" aria-label="拡大">＋</button>
       <button class="btn" id="zout" aria-label="縮小">−</button>
       <button class="btn small" id="zreset" aria-label="表示を元に戻す">戻す</button>
     </div>
     <canvas id="gl" tabindex="0"></canvas>
+    <svg class="rsvg" id="rsvg" aria-hidden="true"><path id="rline" fill="none"/></svg>
     <div class="tags" id="tags"></div>
+    <div class="rmarks" id="rmarks"><span class="rpin" id="rpinA" hidden></span><span class="rpin" id="rpinB" hidden></span><span class="rlabel" id="rlabel" hidden></span></div>
+    <div class="measure" id="measure" hidden>
+      <p class="mval"><b id="mSun"></b><span id="mCm"></span></p>
+      <ul id="mZones"></ul>
+      <button class="btn" id="mClear">消す</button>
+    </div>
     <div class="guide" id="guide" role="status" hidden></div>
     <div class="cardbox" id="card" hidden>
       <div id="cardView">
