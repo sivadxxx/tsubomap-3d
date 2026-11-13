@@ -19,16 +19,29 @@ export async function createBackend(config) {
 
   let sessionCb = () => {}, unsubMember = null;
   const emit = s => sessionCb(s);
-  function watch(user) {
+  let seq = 0;
+  async function watch(user) {
+    const my = ++seq;
     if (unsubMember) { unsubMember(); unsubMember = null; }
     if (!user) return emit({ state: 'out' });
     const email = user.email || '';
     if (!user.emailVerified) return emit({ state: 'unverified', email });
+    // メールの確認が済んだ直後は、手元の通行証（ID トークン）がまだ「未確認」のままのことがある。
+    // そのままだと Firebase 側のルールに断られて名簿もツボも読めないので、通行証を取り直す
+    try { const r = await user.getIdTokenResult(); if (!r.claims.email_verified) await user.getIdToken(true); } catch (e) {}
+    if (my !== seq) return;       // 待っている間に、ログアウトや別の人のログインがあった
     // 名簿の自分の行を見張る：許可・取り消し・役割の変更が、開いたままの画面にも届く
-    unsubMember = F.onSnapshot(F.doc(db, 'members', email), snap => {
-      const role = snap.exists() ? snap.data().role : null;
-      emit(['owner', 'editor', 'viewer'].includes(role) ? { state: 'in', email, role } : { state: 'denied', email });
-    }, () => emit({ state: 'denied', email }));
+    const listen = retry => {
+      unsubMember = F.onSnapshot(F.doc(db, 'members', email), snap => {
+        const role = snap.exists() ? snap.data().role : null;
+        emit(['owner', 'editor', 'viewer'].includes(role) ? { state: 'in', email, role } : { state: 'denied', email });
+      }, async () => {            // 断られたら、通行証を取り直して 1 回だけやり直す
+        if (my !== seq) return;
+        if (retry) { try { await user.getIdToken(true); } catch (e) {} if (my === seq) listen(false); }
+        else emit({ state: 'denied', email });
+      });
+    };
+    listen(true);
   }
   A.onAuthStateChanged(auth, watch);
 
