@@ -133,6 +133,8 @@ li.sel .item{border-color:var(--accent);background:var(--accent-soft)}
 #ceMore .full{margin:6px 0 0}
 .cardbox .danger.armed{background:#B3261E;border-color:#B3261E;color:#fff}
 .credit{display:none}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#sheetBtn{display:none}
 
 /* ログイン・メンバー管理 */
 .inp{display:block;width:100%;margin-top:3px;font:inherit;font-size:16px;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
@@ -197,11 +199,37 @@ body:not([data-role="owner"]) .owner-only{display:none !important}
   .btn{padding:7px 6px}
   .credit{display:block;font-size:10px;line-height:1.5;color:var(--sub);margin:0;padding:0 4px}
 }
-@media (max-width:560px){
-  .panel{grid-template-columns:1fr}
-  .parts{grid-template-columns:repeat(3,1fr)}
-  .tsubo{grid-template-columns:1fr 1fr}
-  .tsubo .pen,.tsubo .io{grid-column:1/-1;justify-self:stretch}
+/* スマホ：図を画面いっぱいに出し、操作は下の帯から開く（開いている間は、図がその上に縮んで全身が見える） */
+@media (max-width:560px), (max-height:500px){
+  .app{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;gap:8px;
+    padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+  .stage{grid-row:1;grid-column:1}
+  .panel{grid-row:2;grid-column:1;display:flex;flex-direction:column;gap:12px;padding:8px 12px;max-height:56dvh;overflow:auto;align-items:stretch}
+  body:not(.sheet) .panel>:not(.phead){display:none}
+  #sheetBtn{display:block;padding:7px 16px;font-weight:600}
+  .parts{grid-template-columns:repeat(6,1fr);gap:4px}
+  .parts .btn{font-size:12.5px;padding:8px 0}
+  .tsubo{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+  .tools{display:grid}
+  .tsubo .two{display:grid}
+  .tsubo .io{justify-self:stretch}
+  #list{flex-direction:column;overflow:visible;flex:none}
+  #list li{max-width:none}
+  .foot{flex-direction:column;align-items:stretch;gap:4px}
+  .acct{grid-template-columns:1fr auto auto;max-width:none}
+  #acctWho{grid-column:1/-1}
+  .note{display:block}
+  p.credit{display:none}
+  .btn{padding:9px 6px}
+  .corner{left:10px;top:10px}
+  .measure{left:8px;bottom:8px}
+}
+@media (max-height:500px) and (min-width:561px){      /* スマホの横向き：操作は右から開く */
+  .app{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:minmax(0,1fr)}
+  .panel{grid-row:1;grid-column:2;max-height:none;width:300px}
+  body:not(.sheet) .panel{width:auto;padding:8px;align-self:start}
+  body:not(.sheet) .panel h1{display:none}
+  .corner{flex-direction:row;flex-wrap:wrap;max-width:60%}
 }
 </style>
 <script type="importmap">{"imports":{"three":"./lib/three.module.min.js"}}</script>
@@ -209,7 +237,7 @@ body:not([data-role="owner"]) .owner-only{display:none !important}
 <body>
 <div class="app">
   <aside class="panel">
-    <div><h1>ツボマップ3D</h1></div>
+    <div class="phead"><h1>ツボマップ3D</h1><button class="btn" id="sheetBtn" type="button" aria-expanded="false">操作を開く</button></div>
     <section><h2>向き</h2>
       <div class="dirs">
         <button class="btn" data-dir="front">正面</button>

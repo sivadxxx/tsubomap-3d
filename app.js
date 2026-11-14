@@ -328,7 +328,7 @@ function renderList() {
     b.addEventListener('click', () => { pt.show = !pt.show; saveHidden(); renderList(); dirty = true; });
     const more = document.createElement('button'); more.type = 'button'; more.className = 'btn more'; more.textContent = '詳細';
     more.setAttribute('aria-label', pt.name + ' の詳細');
-    more.addEventListener('click', () => showPoint(pt.id));
+    more.addEventListener('click', () => { setSheet(false); showPoint(pt.id); });
     li.append(b, more); listEl.append(li);
   }
   $('count').textContent = points.length ? `${points.length} 件` : '';
@@ -365,6 +365,14 @@ function lookAt(pt) {       // そのツボを正面から見る位置へ回り�
   anim = { t0: performance.now(), p0: camera.position.clone(), p1: c1.clone().addScaledVector(new THREE.Vector3(...pt.n), dist), c0: controls.target.clone(), c1 };
 }
 
+// ---- スマホ：操作の帯を開く・閉じる（広い画面では、いつも開いたままなので何も変わらない）
+const sheetBtn = $('sheetBtn');
+function setSheet(open) {
+  document.body.classList.toggle('sheet', open);
+  sheetBtn.setAttribute('aria-expanded', String(open)); sheetBtn.textContent = open ? '閉じる' : '操作を開く';
+}
+sheetBtn.addEventListener('click', () => setSheet(!document.body.classList.contains('sheet')));
+
 // ---- 案内
 let toastTimer = 0, toasting = false;
 function showGuide() {      // カードを開いている間は、じゃまにならないように案内を消す
@@ -392,7 +400,7 @@ function setPen(on) {
   stage.classList.toggle('penon', pen || !!movingId);
   showGuide();
 }
-$('penBtn').addEventListener('click', () => setPen(!pen));
+$('penBtn').addEventListener('click', () => { setPen(!pen); if (pen) setSheet(false); });
 $('penBtn2').addEventListener('click', () => setPen(!pen));
 
 // ---- ものさし：体の表面の 2 点の間を、表面に沿って測り、その部位の骨度で寸に直す
@@ -485,7 +493,7 @@ function setRuler(on) {
   stage.classList.toggle('penon', ruler.on || pen || !!movingId);
   showGuide();
 }
-$('rulerBtn').addEventListener('click', () => setRuler(!ruler.on));
+$('rulerBtn').addEventListener('click', () => { setRuler(!ruler.on); if (ruler.on) setSheet(false); });
 $('rulerBtn2').addEventListener('click', () => setRuler(!ruler.on));
 $('mClear').addEventListener('click', clearRuler);
 function placeRuler(on) {           // 測った線と両端の点を、図の上に重ねて描く（体の向こう側に回った部分は描かない）
